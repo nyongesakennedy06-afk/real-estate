@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'sonner';
+import { AuthProvider } from '@/context/AuthContext';
 import { AppRoutes } from '@/routes/AppRoutes';
 
 const queryClient = new QueryClient({
@@ -17,16 +18,18 @@ export const App: React.FC = () => {
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
-        <AppRoutes />
-        <Toaster
-          position="top-right"
-          richColors
-          toastOptions={{
-            style: {
-              fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
-            },
-          }}
-        />
+        <AuthProvider>
+          <AppRoutes />
+          <Toaster
+            position="top-right"
+            richColors
+            toastOptions={{
+              style: {
+                fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
+              },
+            }}
+          />
+        </AuthProvider>
       </BrowserRouter>
     </QueryClientProvider>
   );

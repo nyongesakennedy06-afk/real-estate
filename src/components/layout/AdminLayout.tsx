@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { NavLink, Outlet, Link, useLocation } from 'react-router-dom';
+import { NavLink, Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { Logo } from '@/components/common/Logo';
 import { Button } from '@/components/ui/button';
+import { useAuth } from '@/hooks/useAuth';
 import {
   LayoutDashboard,
   Building,
@@ -13,12 +14,14 @@ import {
   Menu,
   X,
   ArrowLeft,
-  Bell,
+  LogOut,
 } from 'lucide-react';
 
 export const AdminLayout: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
+  const { user, profile, signOut } = useAuth();
 
   React.useEffect(() => {
     setSidebarOpen(false);
@@ -33,6 +36,19 @@ export const AdminLayout: React.FC = () => {
     { name: 'Reports', path: '/admin/reports', icon: FileSpreadsheet },
     { name: 'Audit Logs', path: '/admin/audit-logs', icon: History },
   ];
+
+  const handleSignOut = async () => {
+    await signOut();
+    navigate('/login');
+  };
+
+  const displayName = profile?.full_name || user?.email?.split('@')[0] || 'Administrator';
+  const initials = displayName
+    .split(' ')
+    .map((n) => n[0])
+    .join('')
+    .substring(0, 2)
+    .toUpperCase();
 
   const sidebarContent = (
     <div className="flex flex-col h-full bg-brand-surface border-r border-brand-border">
@@ -64,7 +80,7 @@ export const AdminLayout: React.FC = () => {
               to={item.path}
               className={`flex items-center justify-between px-3.5 py-2.5 rounded-lg text-sm font-medium transition-all ${
                 isActive
-                  ? 'bg-brand-primary text-white shadow-sm'
+                  ? 'bg-brand-primary text-white shadow-sm font-semibold'
                   : 'text-brand-ink/80 hover:bg-brand-background hover:text-brand-primary'
               }`}
             >
@@ -90,13 +106,20 @@ export const AdminLayout: React.FC = () => {
             <span>Return to Public Site</span>
           </Link>
         </Button>
+        <button
+          onClick={handleSignOut}
+          className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-xs text-rose-600 hover:bg-rose-50 transition-colors"
+        >
+          <LogOut className="w-3.5 h-3.5 text-rose-600" />
+          <span>Log Out</span>
+        </button>
       </div>
     </div>
   );
 
   return (
     <div className="min-h-screen flex bg-brand-background">
-      {/* Desktop/Tablet Static Sidebar (lg:flex) */}
+      {/* Desktop Static Sidebar (lg:flex) */}
       <aside className="hidden lg:block w-64 flex-shrink-0 min-h-screen sticky top-0 h-screen">
         {sidebarContent}
       </aside>
@@ -132,21 +155,14 @@ export const AdminLayout: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-3">
-            <div className="relative">
-              <button
-                className="p-2 rounded-full hover:bg-brand-background text-brand-muted hover:text-brand-ink relative"
-                aria-label="Notifications"
-              >
-                <Bell className="w-5 h-5" />
-                <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-brand-accent"></span>
-              </button>
-            </div>
-            <div className="h-6 w-px bg-brand-border"></div>
-            <div className="flex items-center gap-2 text-sm text-brand-ink font-medium">
+            <div className="flex items-center gap-2.5 text-sm text-brand-ink font-medium">
               <div className="w-8 h-8 rounded-full bg-brand-primary text-white flex items-center justify-center font-serif text-xs font-bold">
-                AD
+                {initials || 'AD'}
               </div>
-              <span className="hidden sm:inline">Administrator</span>
+              <div className="hidden sm:flex flex-col text-left leading-none">
+                <span className="text-xs font-semibold text-brand-primary">{displayName}</span>
+                <span className="text-[10px] text-brand-accent uppercase font-bold tracking-wider mt-0.5">Admin</span>
+              </div>
             </div>
           </div>
         </header>

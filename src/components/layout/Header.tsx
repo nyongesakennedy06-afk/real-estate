@@ -1,27 +1,32 @@
 import React, { useState } from 'react';
-import { NavLink, Link, useLocation } from 'react-router-dom';
+import { NavLink, Link, useLocation, useNavigate } from 'react-router-dom';
 import { Logo } from '@/components/common/Logo';
 import { Button } from '@/components/ui/button';
-import { Menu, X, Home, Building2, ClipboardList, User, Calendar, LogIn, ShieldAlert } from 'lucide-react';
+import { useAuth } from '@/hooks/useAuth';
+import {
+  Menu,
+  X,
+  Home,
+  Building2,
+  ClipboardList,
+  User,
+  Calendar,
+  LogIn,
+  ShieldAlert,
+  LogOut,
+  ChevronDown,
+} from 'lucide-react';
 
-interface HeaderProps {
-  // We will wire up real auth state in Phase 3
-  isLoggedIn?: boolean;
-  isAdmin?: boolean;
-  userName?: string;
-}
-
-export const Header: React.FC<HeaderProps> = ({
-  isLoggedIn = false,
-  isAdmin = false,
-  userName = 'User',
-}) => {
+export const Header: React.FC = () => {
+  const { user, profile, isAdmin, signOut } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
 
-  // Close mobile menu on navigate
   React.useEffect(() => {
     setMobileMenuOpen(false);
+    setDropdownOpen(false);
   }, [location.pathname]);
 
   const navLinks = [
@@ -30,13 +35,20 @@ export const Header: React.FC<HeaderProps> = ({
     { name: 'Request Valuation', path: '/valuation/new', icon: ClipboardList },
   ];
 
+  const handleSignOut = async () => {
+    await signOut();
+    navigate('/');
+  };
+
+  const displayName = profile?.full_name || user?.email?.split('@')[0] || 'User';
+
   return (
     <header className="sticky top-0 z-40 w-full border-b border-brand-border bg-brand-surface/95 backdrop-blur-md transition-all">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
         {/* Brand Logo */}
         <Logo variant="dark" />
 
-        {/* Desktop Navigation (>= 768px tablet & desktop) */}
+        {/* Desktop Navigation */}
         <nav className="hidden md:flex items-center space-x-1 lg:space-x-2">
           {navLinks.map((link) => (
             <NavLink
@@ -55,37 +67,82 @@ export const Header: React.FC<HeaderProps> = ({
           ))}
         </nav>
 
-        {/* Desktop Auth / CTA */}
+        {/* Desktop Auth / User Menu */}
         <div className="hidden md:flex items-center space-x-3">
-          {isLoggedIn ? (
-            <div className="flex items-center space-x-2">
+          {user ? (
+            <div className="flex items-center space-x-2 relative">
               {isAdmin && (
-                <Button variant="outline" size="sm" asChild className="border-brand-primary text-brand-primary">
+                <Button variant="outline" size="sm" asChild className="border-brand-primary text-brand-primary hover:bg-brand-background">
                   <Link to="/admin" className="flex items-center gap-1.5">
                     <ShieldAlert className="w-4 h-4 text-brand-accent" />
                     <span>Admin Panel</span>
                   </Link>
                 </Button>
               )}
-              <Button variant="ghost" size="sm" asChild>
-                <Link to="/account/bookings" className="flex items-center gap-1.5">
-                  <Calendar className="w-4 h-4 text-brand-muted" />
-                  <span>My Bookings</span>
-                </Link>
-              </Button>
-              <Button variant="secondary" size="sm" asChild>
-                <Link to="/account/profile" className="flex items-center gap-1.5">
-                  <User className="w-4 h-4 text-brand-muted" />
-                  <span>{userName}</span>
-                </Link>
-              </Button>
+
+              {/* Account Dropdown */}
+              <div className="relative">
+                <button
+                  onClick={() => setDropdownOpen(!dropdownOpen)}
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg border border-brand-border bg-brand-surface hover:bg-brand-background text-sm font-medium text-brand-ink transition-colors focus:outline-none focus:ring-2 focus:ring-brand-accent"
+                >
+                  <div className="w-7 h-7 rounded-full bg-brand-primary text-white flex items-center justify-center font-serif text-xs font-bold">
+                    {displayName.charAt(0).toUpperCase()}
+                  </div>
+                  <span className="max-w-[120px] truncate">{displayName}</span>
+                  <ChevronDown className={`w-3.5 h-3.5 text-brand-muted transition-transform ${dropdownOpen ? 'rotate-180' : ''}`} />
+                </button>
+
+                {dropdownOpen && (
+                  <div className="absolute right-0 mt-2 w-56 rounded-lg bg-brand-surface border border-brand-border shadow-lg py-2 z-50 animate-in fade-in-50 zoom-in-95 duration-150">
+                    <div className="px-4 py-2 border-b border-brand-border/60">
+                      <p className="text-xs font-semibold text-brand-primary truncate">{displayName}</p>
+                      <p className="text-[11px] text-brand-muted truncate">{user.email}</p>
+                    </div>
+
+                    <Link
+                      to="/account/bookings"
+                      className="flex items-center gap-2.5 px-4 py-2 text-xs text-brand-ink hover:bg-brand-background hover:text-brand-primary transition-colors"
+                    >
+                      <Calendar className="w-4 h-4 text-brand-accent" />
+                      <span>My Bookings</span>
+                    </Link>
+
+                    <Link
+                      to="/account/valuations"
+                      className="flex items-center gap-2.5 px-4 py-2 text-xs text-brand-ink hover:bg-brand-background hover:text-brand-primary transition-colors"
+                    >
+                      <ClipboardList className="w-4 h-4 text-brand-accent" />
+                      <span>My Valuations</span>
+                    </Link>
+
+                    <Link
+                      to="/account/profile"
+                      className="flex items-center gap-2.5 px-4 py-2 text-xs text-brand-ink hover:bg-brand-background hover:text-brand-primary transition-colors"
+                    >
+                      <User className="w-4 h-4 text-brand-accent" />
+                      <span>Profile Settings</span>
+                    </Link>
+
+                    <div className="border-t border-brand-border/60 mt-1 pt-1">
+                      <button
+                        onClick={handleSignOut}
+                        className="w-full flex items-center gap-2.5 px-4 py-2 text-xs text-rose-600 hover:bg-rose-50 transition-colors text-left"
+                      >
+                        <LogOut className="w-4 h-4 text-rose-600" />
+                        <span>Log Out</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           ) : (
             <div className="flex items-center space-x-2">
               <Button variant="ghost" size="sm" asChild>
                 <Link to="/login" className="flex items-center gap-1.5">
                   <LogIn className="w-4 h-4" />
-                  <span>Log in</span>
+                  <span>Log In</span>
                 </Link>
               </Button>
               <Button variant="default" size="sm" asChild>
@@ -95,7 +152,7 @@ export const Header: React.FC<HeaderProps> = ({
           )}
         </div>
 
-        {/* Mobile Hamburger Button (< 768px) */}
+        {/* Mobile Hamburger Button */}
         <div className="flex md:hidden items-center">
           <button
             type="button"
@@ -109,7 +166,7 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
       </div>
 
-      {/* Mobile Drawer / Slide-down Menu */}
+      {/* Mobile Drawer Menu */}
       {mobileMenuOpen && (
         <div className="md:hidden border-b border-brand-border bg-brand-surface px-4 pt-3 pb-6 space-y-3 animate-in slide-in-from-top-2 duration-200">
           <div className="space-y-1">
@@ -135,39 +192,56 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
 
           <div className="pt-4 border-t border-brand-border/80 flex flex-col gap-2">
-            {isLoggedIn ? (
+            {user ? (
               <>
+                <div className="px-3 py-2 bg-brand-background rounded-lg border border-brand-border mb-1">
+                  <p className="text-sm font-semibold text-brand-primary">{displayName}</p>
+                  <p className="text-xs text-brand-muted">{user.email}</p>
+                </div>
+
                 {isAdmin && (
-                  <Button variant="outline" asChild className="w-full justify-start h-11 border-brand-primary">
+                  <Button variant="outline" asChild className="w-full justify-start h-11 border-brand-primary text-brand-primary">
                     <Link to="/admin" className="flex items-center gap-2">
                       <ShieldAlert className="w-5 h-5 text-brand-accent" />
                       <span>Admin Panel</span>
                     </Link>
                   </Button>
                 )}
+
                 <Button variant="outline" asChild className="w-full justify-start h-11">
                   <Link to="/account/bookings" className="flex items-center gap-2">
-                    <Calendar className="w-5 h-5 text-brand-muted" />
+                    <Calendar className="w-5 h-5 text-brand-accent" />
                     <span>My Bookings</span>
                   </Link>
                 </Button>
+
                 <Button variant="outline" asChild className="w-full justify-start h-11">
                   <Link to="/account/valuations" className="flex items-center gap-2">
-                    <ClipboardList className="w-5 h-5 text-brand-muted" />
+                    <ClipboardList className="w-5 h-5 text-brand-accent" />
                     <span>My Valuations</span>
                   </Link>
                 </Button>
+
                 <Button variant="secondary" asChild className="w-full justify-start h-11">
                   <Link to="/account/profile" className="flex items-center gap-2">
-                    <User className="w-5 h-5 text-brand-muted" />
-                    <span>Profile ({userName})</span>
+                    <User className="w-5 h-5 text-brand-accent" />
+                    <span>Profile Settings</span>
                   </Link>
+                </Button>
+
+                <Button
+                  variant="outline"
+                  onClick={handleSignOut}
+                  className="w-full justify-start h-11 text-rose-600 border-rose-200 hover:bg-rose-50"
+                >
+                  <LogOut className="w-5 h-5 mr-2 text-rose-600" />
+                  <span>Log Out</span>
                 </Button>
               </>
             ) : (
               <div className="grid grid-cols-2 gap-2 pt-2">
                 <Button variant="outline" asChild className="h-11">
-                  <Link to="/login">Log in</Link>
+                  <Link to="/login">Log In</Link>
                 </Button>
                 <Button variant="default" asChild className="h-11">
                   <Link to="/register">Register</Link>
