@@ -2,21 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
-import { formatPrice, formatNumber } from '@/lib/formatters';
+import { formatPrice } from '@/lib/formatters';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import {
   MapPin,
-  Bed,
-  Bath,
-  Square,
   Building2,
   Calendar,
-  ClipboardList,
   ArrowLeft,
-  CheckCircle2,
-  AlertCircle,
   Share2,
   Check,
 } from 'lucide-react';
@@ -86,17 +80,13 @@ export const PropertyDetailPage: React.FC = () => {
     if (!user) {
       navigate(`/login?returnUrl=/properties/${id}`);
     } else {
-      // In Phase 5, this opens the booking modal/calendar
-      const bookingEl = document.getElementById('booking-section');
-      if (bookingEl) {
-        bookingEl.scrollIntoView({ behavior: 'smooth' });
-      }
+      navigate('/account/bookings');
     }
   };
 
   if (isLoading) {
     return (
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 space-y-8 animate-pulse">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8 animate-pulse">
         <div className="h-6 w-36 bg-brand-border/60 rounded" />
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-2 space-y-6">
@@ -138,7 +128,7 @@ export const PropertyDetailPage: React.FC = () => {
   const isAvailable = property.status === 'available';
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
       {/* Back Button & Actions Bar */}
       <div className="flex items-center justify-between">
         <Button variant="ghost" size="sm" asChild className="text-brand-muted hover:text-brand-primary">
@@ -168,10 +158,10 @@ export const PropertyDetailPage: React.FC = () => {
         </Button>
       </div>
 
-      {/* Main Grid */}
+      {/* Main Grid: Gallery & Description on Left, Key Details on Right */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
-        {/* Left Column: Gallery & Details (2 Cols) */}
-        <div className="lg:col-span-2 space-y-8">
+        {/* Left Column (2 Cols): Image Gallery & Description directly beneath */}
+        <div className="lg:col-span-2 space-y-6">
           {/* 1. Image Gallery */}
           <div className="space-y-3">
             {/* Main Image Container (Aspect 3:2) */}
@@ -180,7 +170,7 @@ export const PropertyDetailPage: React.FC = () => {
                 <img
                   src={activeImage}
                   alt={property.title}
-                  className="w-full h-full object-cover transition-opacity duration-200"
+                  className="w-full h-full object-cover"
                 />
               ) : (
                 <div className="w-full h-full flex flex-col items-center justify-center text-brand-muted bg-brand-background">
@@ -188,43 +178,19 @@ export const PropertyDetailPage: React.FC = () => {
                   <span className="text-sm mt-2 font-medium">No Images Provided</span>
                 </div>
               )}
-
-              {/* Badges on main image */}
-              <div className="absolute top-4 left-4 flex flex-wrap gap-2 z-10">
-                <span
-                  className={`text-xs font-semibold px-3 py-1 rounded shadow-sm ${
-                    property.listing_type === 'sale'
-                      ? 'bg-brand-primary text-white'
-                      : 'bg-brand-accent text-white'
-                  }`}
-                >
-                  {property.listing_type === 'sale' ? 'For Sale' : 'For Rent'}
-                </span>
-                <span className="bg-brand-surface/95 backdrop-blur-sm text-brand-ink border border-brand-border text-xs font-semibold px-3 py-1 rounded shadow-sm">
-                  {property.category === 'residential' ? 'Residential' : 'Commercial'}
-                </span>
-              </div>
-
-              {!isAvailable && (
-                <div className="absolute top-4 right-4 z-10">
-                  <Badge variant="closed" className="text-xs uppercase font-bold px-3 py-1">
-                    {property.status}
-                  </Badge>
-                </div>
-              )}
             </div>
 
             {/* Thumbnail Strip */}
             {images.length > 1 && (
-              <div className="flex items-center gap-3 overflow-x-auto pb-2 scrollbar-thin">
+              <div className="flex items-center gap-2.5 overflow-x-auto pb-1 scrollbar-thin">
                 {images.map((img, idx) => (
                   <button
                     key={img.id || idx}
                     type="button"
                     onClick={() => setSelectedImageIndex(idx)}
-                    className={`relative w-24 h-16 rounded-lg overflow-hidden flex-shrink-0 border-2 transition-all focus:outline-none ${
+                    className={`relative w-20 h-14 rounded-lg overflow-hidden flex-shrink-0 border-2 transition-all ${
                       selectedImageIndex === idx
-                        ? 'border-brand-accent ring-2 ring-brand-accent/20 scale-102'
+                        ? 'border-brand-primary ring-2 ring-brand-primary/20'
                         : 'border-brand-border opacity-70 hover:opacity-100'
                     }`}
                   >
@@ -235,179 +201,68 @@ export const PropertyDetailPage: React.FC = () => {
             )}
           </div>
 
-          {/* 2. Property Title & Overview Card */}
-          <Card className="p-6 sm:p-8 border-brand-border bg-brand-surface space-y-6">
-            <div className="space-y-2">
-              <div className="flex items-center gap-2 text-brand-accent text-sm font-semibold">
-                <MapPin className="w-4 h-4 flex-shrink-0" />
-                <span>{property.location}</span>
-              </div>
-              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-serif font-bold text-brand-primary leading-tight">
-                {property.title}
-              </h1>
-              <div className="pt-2">
-                <span className="text-xs text-brand-muted uppercase font-bold tracking-wider">
-                  Asking Price
-                </span>
-                <p className="text-3xl font-serif font-bold text-brand-primary">
-                  {formatPrice(property.price, property.listing_type)}
-                </p>
-              </div>
-            </div>
-
-            {/* Quick Specs Grid */}
-            <div className="grid grid-cols-3 gap-4 py-4 border-y border-brand-border text-center">
-              <div>
-                <p className="text-[11px] uppercase tracking-wider text-brand-muted font-semibold flex items-center justify-center gap-1">
-                  <Bed className="w-3.5 h-3.5 text-brand-accent" />
-                  <span>Bedrooms</span>
-                </p>
-                <p className="text-base sm:text-lg font-bold text-brand-primary mt-1">
-                  {property.bedrooms !== null && property.bedrooms !== undefined
-                    ? `${property.bedrooms} Beds`
-                    : 'N/A'}
-                </p>
-              </div>
-
-              <div>
-                <p className="text-[11px] uppercase tracking-wider text-brand-muted font-semibold flex items-center justify-center gap-1">
-                  <Bath className="w-3.5 h-3.5 text-brand-accent" />
-                  <span>Bathrooms</span>
-                </p>
-                <p className="text-base sm:text-lg font-bold text-brand-primary mt-1">
-                  {property.bathrooms !== null && property.bathrooms !== undefined
-                    ? `${property.bathrooms} Baths`
-                    : 'N/A'}
-                </p>
-              </div>
-
-              <div>
-                <p className="text-[11px] uppercase tracking-wider text-brand-muted font-semibold flex items-center justify-center gap-1">
-                  <Square className="w-3.5 h-3.5 text-brand-accent" />
-                  <span>Floor Area</span>
-                </p>
-                <p className="text-base sm:text-lg font-bold text-brand-primary mt-1">
-                  {property.size_sqft !== null && property.size_sqft !== undefined
-                    ? `${formatNumber(property.size_sqft)} sq ft`
-                    : 'Unspecified'}
-                </p>
-              </div>
-            </div>
-
-            {/* Full Description */}
-            <div className="space-y-3">
-              <h3 className="font-serif text-xl font-bold text-brand-primary">
-                Property Overview
-              </h3>
-              <p className="text-brand-ink/80 text-sm sm:text-base leading-relaxed whitespace-pre-line font-light">
-                {property.description || 'No detailed description provided for this listing.'}
-              </p>
-            </div>
-
-            {/* Property Data Reference Table */}
-            <div className="pt-4 border-t border-brand-border space-y-3">
-              <h4 className="text-xs font-bold uppercase tracking-wider text-brand-muted">
-                Listing Reference Details
-              </h4>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
-                <div className="bg-brand-background p-3 rounded-lg border border-brand-border">
-                  <span className="text-brand-muted">Category</span>
-                  <p className="font-semibold text-brand-primary capitalize mt-0.5">{property.category}</p>
-                </div>
-                <div className="bg-brand-background p-3 rounded-lg border border-brand-border">
-                  <span className="text-brand-muted">Listing Type</span>
-                  <p className="font-semibold text-brand-primary capitalize mt-0.5">{property.listing_type}</p>
-                </div>
-                <div className="bg-brand-background p-3 rounded-lg border border-brand-border">
-                  <span className="text-brand-muted">Status</span>
-                  <p className="font-semibold text-brand-primary capitalize mt-0.5">{property.status}</p>
-                </div>
-                <div className="bg-brand-background p-3 rounded-lg border border-brand-border">
-                  <span className="text-brand-muted">Reference</span>
-                  <p className="font-mono text-brand-primary mt-0.5">{property.id.substring(0, 8)}</p>
-                </div>
-              </div>
-            </div>
-          </Card>
+          {/* 2. Property Description: Directly below image gallery, leaving no blank spaces */}
+          <div className="p-6 sm:p-8 rounded-xl border border-brand-border bg-brand-surface shadow-sm space-y-3">
+            <h2 className="font-serif text-xl font-bold text-brand-primary">
+              Description
+            </h2>
+            <p className="text-brand-ink/90 text-sm sm:text-base leading-relaxed whitespace-pre-line font-light">
+              {property.description || 'No description provided.'}
+            </p>
+          </div>
         </div>
 
-        {/* Right Column: Actions (Sticky on Desktop) */}
+        {/* Right Column (1 Col): Title, Price, Location & Simple Action */}
         <div className="space-y-6 lg:sticky lg:top-24">
-          {/* Main Transaction CTA Card: Site Viewing */}
-          <Card id="booking-section" className="border-brand-border bg-brand-surface p-6 space-y-5 shadow-sm">
-            <div className="space-y-1.5">
-              <span className="text-[10px] uppercase tracking-[0.2em] font-bold text-brand-accent">
-                Direct Appointment
+          <Card className="p-6 border-brand-border bg-brand-surface space-y-5 shadow-sm">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold px-2.5 py-1 rounded bg-brand-primary text-white">
+                {property.listing_type === 'sale' ? 'For Sale' : 'For Rent'}
               </span>
-              <h3 className="font-serif text-2xl font-bold text-brand-primary">
-                Book a Site Viewing
-              </h3>
-              <p className="text-xs text-brand-muted leading-relaxed">
-                Schedule a private, accompanied viewing with our licensed property managers.
+              <Badge variant="outline" className="text-xs capitalize">
+                {property.category}
+              </Badge>
+              {!isAvailable && (
+                <Badge variant="closed" className="text-xs capitalize ml-auto">
+                  {property.status}
+                </Badge>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <h1 className="text-2xl sm:text-3xl font-serif font-bold text-brand-primary leading-tight">
+                {property.title}
+              </h1>
+              <p className="text-sm text-brand-muted flex items-center gap-1.5">
+                <MapPin className="w-4 h-4 text-brand-accent flex-shrink-0" />
+                <span>{property.location}</span>
               </p>
             </div>
 
-            {isAvailable ? (
-              <>
-                <div className="space-y-2.5 text-xs bg-brand-background p-3.5 rounded-lg border border-brand-border">
-                  <div className="flex items-center gap-2 text-brand-ink">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-                    <span>Monday &ndash; Saturday, 09:00 &ndash; 17:00</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-brand-ink">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-                    <span>Accompanied by licensed surveyor</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-brand-ink">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-                    <span>No viewing fees required</span>
-                  </div>
-                </div>
+            <div className="pt-3 border-t border-brand-border">
+              <span className="text-xs text-brand-muted uppercase font-bold tracking-wider">
+                Asking Price
+              </span>
+              <p className="text-3xl font-serif font-bold text-brand-primary mt-1">
+                {formatPrice(property.price, property.listing_type)}
+              </p>
+            </div>
 
+            <div className="pt-2">
+              {isAvailable ? (
                 <Button
                   onClick={handleBookViewingClick}
-                  className="w-full h-12 bg-brand-primary hover:bg-brand-primary-light text-white font-medium flex items-center justify-center gap-2 shadow-sm"
+                  className="w-full h-12 bg-brand-primary hover:bg-brand-primary-light text-white font-medium text-sm flex items-center justify-center gap-2"
                 >
                   <Calendar className="w-4 h-4" />
-                  <span>{user ? 'Select Viewing Date & Slot' : 'Sign In to Book Viewing'}</span>
+                  <span>{user ? 'Book a Viewing' : 'Sign In to Book Viewing'}</span>
                 </Button>
-
-                {!user && (
-                  <p className="text-[11px] text-center text-brand-muted">
-                    Returning to this listing automatically after sign-in.
-                  </p>
-                )}
-              </>
-            ) : (
-              <div className="p-4 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-start gap-2.5">
-                <AlertCircle className="w-4 h-4 text-amber-700 flex-shrink-0 mt-0.5" />
-                <span>
-                  This property is currently <strong>{property.status}</strong> and viewing appointment scheduling is closed.
-                </span>
-              </div>
-            )}
-          </Card>
-
-          {/* Secondary Action: Request Valuation */}
-          <Card className="border-brand-border bg-brand-surface p-6 space-y-4 shadow-sm">
-            <div className="w-10 h-10 rounded-lg bg-brand-background border border-brand-border flex items-center justify-center text-brand-primary">
-              <ClipboardList className="w-5 h-5 text-brand-accent" />
+              ) : (
+                <div className="p-3.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-xs text-center font-medium">
+                  This property is currently {property.status}.
+                </div>
+              )}
             </div>
-            <div className="space-y-1">
-              <h3 className="font-serif text-lg font-bold text-brand-primary">
-                Need a Certified Valuation?
-              </h3>
-              <p className="text-xs text-brand-muted leading-relaxed">
-                If you own a property in Nairobi requiring a statutory, mortgage, probate, or asset valuation report.
-              </p>
-            </div>
-            <Button
-              variant="outline"
-              asChild
-              className="w-full border-brand-primary text-brand-primary hover:bg-brand-background h-10"
-            >
-              <Link to="/valuation/new">Request a Property Valuation</Link>
-            </Button>
           </Card>
         </div>
       </div>
