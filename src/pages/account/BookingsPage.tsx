@@ -1,59 +1,208 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
+import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/hooks/useAuth';
+import { AccountNav } from '@/components/account/AccountNav';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Link } from 'react-router-dom';
-import { Calendar, Building, Clock } from 'lucide-react';
+import { Calendar, Clock, MapPin, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
+
+interface BookingItem {
+  id: string;
+  property_id: string;
+  viewing_date: string;
+  viewing_time: string;
+  status: string;
+  client_notes: string | null;
+  created_at: string;
+  properties?: {
+    id: string;
+    title: string;
+    location: string;
+  } | null;
+}
 
 export const BookingsPage: React.FC = () => {
+  const { user } = useAuth();
+  const [bookings, setBookings] = useState<BookingItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
+
+  const loadBookings = async () => {
+    if (!user) return;
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('viewing_bookings')
+        .select(`
+          id,
+          property_id,
+          viewing_date,
+          viewing_time,
+          status,
+          client_notes,
+          created_at,
+          properties (
+            id,
+            title,
+            location
+          )
+        `)
+        .order('viewing_date', { ascending: false });
+
+      if (error) throw error;
+      if (data) setBookings(data as unknown as BookingItem[]);
+    } catch (err: any) {
+      console.error('Error fetching bookings:', err);
+      toast.error('Could not load viewing bookings.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadBookings();
+  }, [user]);
+
+  const handleCancel = async (id: string) => {
+    if (!confirm('Cancel this viewing booking?')) return;
+    setCancellingId(id);
+    try {
+      const { error } = await supabase
+        .from('viewing_bookings')
+        .update({ status: 'cancelled' })
+        .eq('id', id);
+
+      if (error) throw error;
+      toast.success('Booking cancelled.');
+      setBookings((prev) =>
+        prev.map((b) => (b.id === id ? { ...b, status: 'cancelled' } : b))
+      );
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to cancel.');
+    } finally {
+      setCancellingId(null);
+    }
+  };
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case 'confirmed':
+        return <Badge variant="confirmed">Confirmed</Badge>;
+      case 'pending':
+        return <Badge variant="pending">Pending</Badge>;
+      case 'cancelled':
+        return <Badge variant="destructive">Cancelled</Badge>;
+      default:
+        return <Badge variant="outline">{status}</Badge>;
+    }
+  };
+
   return (
-    <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
-      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+    <div className="max-w-4xl mx-auto px-4 sm:px-6 py-10 space-y-6">
+      <div className="flex items-center justify-between">
         <div>
-          <span className="text-xs uppercase tracking-[0.25em] font-bold text-brand-accent">
-            Client Portal
-          </span>
-          <h1 className="text-3xl font-serif font-bold text-brand-primary mt-1">
+          <h1 className="text-2xl sm:text-3xl font-serif font-bold text-brand-primary">
             My Viewing Appointments
           </h1>
           <p className="text-sm text-brand-muted mt-1">
-            Track status updates for scheduled property visits.
+            Track and manage your scheduled property viewings.
           </p>
         </div>
         <Button asChild className="bg-brand-primary hover:bg-brand-primary-light">
-          <Link to="/properties">Browse More Properties</Link>
+          <Link to="/properties">Browse Properties</Link>
         </Button>
       </div>
 
-      <div className="space-y-4">
-        <Card className="border-brand-border bg-brand-surface p-6">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <Badge variant="pending">Pending Admin Confirmation</Badge>
-                <span className="text-xs text-brand-muted">Booked today</span>
-              </div>
-              <h3 className="font-serif text-xl font-bold text-brand-primary">
-                Executive 3-Bedroom Penthouse
-              </h3>
-              <p className="text-xs text-brand-muted flex items-center gap-2">
-                <Building className="w-3.5 h-3.5 text-brand-accent" />
-                <span>Woodvale Close, Westlands, Nairobi</span>
-              </p>
-            </div>
-            <div className="bg-brand-background p-4 rounded-lg border border-brand-border text-sm flex items-center gap-4">
-              <div className="flex items-center gap-2 text-brand-ink">
-                <Calendar className="w-4 h-4 text-brand-accent" />
-                <span className="font-medium">Tomorrow</span>
-              </div>
-              <div className="flex items-center gap-2 text-brand-ink">
-                <Clock className="w-4 h-4 text-brand-accent" />
-                <span className="font-medium">10:30 AM</span>
-              </div>
-            </div>
-          </div>
+      <AccountNav />
+
+      {loading ? (
+        <div className="space-y-3">
+          {[1, 2].map((i) => (
+            <div key={i} className="h-20 bg-brand-surface rounded-lg border border-brand-border animate-pulse" />
+          ))}
+        </div>
+      ) : bookings.length === 0 ? (
+        <Card className="p-8 text-center border-brand-border bg-brand-surface space-y-3">
+          <p className="text-sm text-brand-muted">You have no viewing appointments scheduled.</p>
+          <Button asChild size="sm" className="bg-brand-primary hover:bg-brand-primary-light">
+            <Link to="/properties">Explore Listings</Link>
+          </Button>
         </Card>
-      </div>
+      ) : (
+        <div className="space-y-3">
+          {bookings.map((b) => {
+            const canCancel = b.status === 'pending' || b.status === 'confirmed';
+            return (
+              <Card
+                key={b.id}
+                className="p-5 border-brand-border bg-brand-surface flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm"
+              >
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    {getStatusBadge(b.status)}
+                    <span className="text-xs text-brand-muted">
+                      {new Date(b.created_at).toLocaleDateString()}
+                    </span>
+                  </div>
+
+                  {b.properties ? (
+                    <Link
+                      to={`/properties/${b.properties.id}`}
+                      className="font-serif text-base font-bold text-brand-primary hover:text-brand-accent block"
+                    >
+                      {b.properties.title}
+                    </Link>
+                  ) : (
+                    <span className="font-serif text-base font-bold text-brand-primary">
+                      Property Listing
+                    </span>
+                  )}
+
+                  {b.properties && (
+                    <p className="text-xs text-brand-muted flex items-center gap-1">
+                      <MapPin className="w-3.5 h-3.5 text-brand-accent" />
+                      <span>{b.properties.location}</span>
+                    </p>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-4">
+                  <div className="text-xs bg-brand-background px-3 py-2 rounded border border-brand-border flex items-center gap-2.5">
+                    <span className="flex items-center gap-1 font-medium text-brand-ink">
+                      <Calendar className="w-3.5 h-3.5 text-brand-accent" />
+                      {b.viewing_date}
+                    </span>
+                    <span className="text-brand-border">|</span>
+                    <span className="flex items-center gap-1 font-medium text-brand-ink">
+                      <Clock className="w-3.5 h-3.5 text-brand-accent" />
+                      {b.viewing_time.slice(0, 5)}
+                    </span>
+                  </div>
+
+                  {canCancel && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={cancellingId === b.id}
+                      onClick={() => handleCancel(b.id)}
+                      className="border-red-200 text-red-600 hover:bg-red-50 text-xs h-8"
+                    >
+                      {cancellingId === b.id ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        'Cancel'
+                      )}
+                    </Button>
+                  )}
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 };

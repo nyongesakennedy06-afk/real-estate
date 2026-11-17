@@ -3,6 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
 import { formatPrice } from '@/lib/formatters';
+import { BookingModal } from '@/components/booking/BookingModal';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -33,6 +34,7 @@ export const PropertyDetailPage: React.FC = () => {
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [copied, setCopied] = useState(false);
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   useEffect(() => {
     async function loadProperty() {
@@ -80,7 +82,7 @@ export const PropertyDetailPage: React.FC = () => {
     if (!user) {
       navigate(`/login?returnUrl=/properties/${id}`);
     } else {
-      navigate('/account/bookings');
+      setIsModalOpen(true);
     }
   };
 
@@ -266,6 +268,16 @@ export const PropertyDetailPage: React.FC = () => {
           </Card>
         </div>
       </div>
+
+      {property && (
+        <BookingModal
+          propertyId={property.id}
+          propertyTitle={property.title}
+          isOpen={isModalOpen}
+          onClose={() => setIsModalOpen(false)}
+          onSuccess={() => navigate('/account/bookings')}
+        />
+      )}
     </div>
   );
 };
