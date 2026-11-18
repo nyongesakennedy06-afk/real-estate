@@ -45,7 +45,7 @@ export const AdminListingsPage: React.FC = () => {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [price, setPrice] = useState<number | ''>('');
-  const [listingType, setListingType] = useState('for_sale');
+  const [listingType, setListingType] = useState('sale');
   const [category, setCategory] = useState('residential');
   const [location, setLocation] = useState('');
   const [status, setStatus] = useState('available');
@@ -85,7 +85,7 @@ export const AdminListingsPage: React.FC = () => {
     setTitle('');
     setDescription('');
     setPrice('');
-    setListingType('for_sale');
+    setListingType('sale');
     setCategory('residential');
     setLocation('');
     setStatus('available');
@@ -339,9 +339,9 @@ export const AdminListingsPage: React.FC = () => {
             >
               <option value="all">All Statuses</option>
               <option value="available">Available</option>
-              <option value="under_offer">Under Offer</option>
+              <option value="reserved">Reserved</option>
               <option value="sold">Sold</option>
-              <option value="let">Let</option>
+              <option value="rented">Rented</option>
             </select>
             <Badge variant="outline" className="text-xs">
               Total: {filteredProperties.length}
@@ -408,7 +408,7 @@ export const AdminListingsPage: React.FC = () => {
                         </td>
 
                         <td className="py-3 px-4 capitalize text-xs">
-                          {p.listing_type === 'for_sale' ? 'Sale' : 'Rent'} &middot; {p.category}
+                          {p.listing_type === 'sale' ? 'Sale' : 'Rent'} &middot; {p.category}
                         </td>
 
                         <td className="py-3 px-4 font-semibold text-xs">
@@ -420,7 +420,7 @@ export const AdminListingsPage: React.FC = () => {
                             variant={
                               p.status === 'available'
                                 ? 'confirmed'
-                                : p.status === 'under_offer'
+                                : p.status === 'reserved'
                                 ? 'pending'
                                 : 'closed'
                             }
@@ -495,8 +495,8 @@ export const AdminListingsPage: React.FC = () => {
                     onChange={(e) => setListingType(e.target.value)}
                     className="w-full h-10 px-3 rounded-md border border-brand-border bg-white text-sm text-brand-ink"
                   >
-                    <option value="for_sale">For Sale</option>
-                    <option value="to_rent">To Rent</option>
+                    <option value="sale">For Sale</option>
+                    <option value="rent">To Rent</option>
                   </select>
                 </div>
 
@@ -509,8 +509,6 @@ export const AdminListingsPage: React.FC = () => {
                   >
                     <option value="residential">Residential</option>
                     <option value="commercial">Commercial</option>
-                    <option value="land">Land</option>
-                    <option value="industrial">Industrial</option>
                   </select>
                 </div>
               </div>
@@ -551,9 +549,9 @@ export const AdminListingsPage: React.FC = () => {
                     className="w-full h-10 px-3 rounded-md border border-brand-border bg-white text-sm text-brand-ink"
                   >
                     <option value="available">Available</option>
-                    <option value="under_offer">Under Offer</option>
+                    <option value="reserved">Reserved</option>
                     <option value="sold">Sold</option>
-                    <option value="let">Let</option>
+                    <option value="rented">Rented</option>
                   </select>
                 </div>
 
