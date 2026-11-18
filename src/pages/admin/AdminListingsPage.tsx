@@ -54,12 +54,16 @@ export const AdminListingsPage: React.FC = () => {
   const [status, setStatus] = useState('available');
   const [isFeatured, setIsFeatured] = useState(false);
 
-  // Property Images State (for edit mode)
+  // Property Images State
   const [images, setImages] = useState<
     Array<{ id: string; image_url: string; is_primary: boolean; storage_path?: string | null }>
   >([]);
   const [uploadingImage, setUploadingImage] = useState(false);
-  const [newImageUrl, setNewImageUrl] = useState('');
+
+  // Pending files for Create mode (local preview before upload)
+  const [pendingFiles, setPendingFiles] = useState<
+    Array<{ file: File; previewUrl: string; isPrimary: boolean }>
+  >([]);
 
   const loadProperties = async () => {
     setLoading(true);
@@ -83,6 +87,12 @@ export const AdminListingsPage: React.FC = () => {
     loadProperties();
   }, []);
 
+  const closeModal = () => {
+    pendingFiles.forEach((p) => URL.revokeObjectURL(p.previewUrl));
+    setPendingFiles([]);
+    setIsModalOpen(false);
+  };
+
   const openCreateModal = () => {
     setEditingProperty(null);
     setTitle('');
@@ -97,7 +107,8 @@ export const AdminListingsPage: React.FC = () => {
     setStatus('available');
     setIsFeatured(false);
     setImages([]);
-    setNewImageUrl('');
+    pendingFiles.forEach((p) => URL.revokeObjectURL(p.previewUrl));
+    setPendingFiles([]);
     setIsModalOpen(true);
   };
 
@@ -115,7 +126,8 @@ export const AdminListingsPage: React.FC = () => {
     setStatus(prop.status);
     setIsFeatured(prop.is_featured);
     setImages(prop.property_images || []);
-    setNewImageUrl('');
+    pendingFiles.forEach((p) => URL.revokeObjectURL(p.previewUrl));
+    setPendingFiles([]);
     setIsModalOpen(true);
   };
 
@@ -172,19 +184,38 @@ export const AdminListingsPage: React.FC = () => {
 
         if (error) throw error;
 
-        // If a primary image URL was provided during creation
-        if (newImageUrl.trim() && newProp?.id) {
-          await supabase.from('property_images').insert({
-            property_id: newProp.id,
-            image_url: newImageUrl.trim(),
-            is_primary: true,
-          });
+        // If files were selected during creation, upload them to Supabase Storage
+        if (pendingFiles.length > 0 && newProp?.id) {
+          for (let i = 0; i < pendingFiles.length; i++) {
+            const item = pendingFiles[i];
+            const fileExt = item.file.name.split('.').pop() || 'jpg';
+            const fileName = `${newProp.id}/${Date.now()}-${i}.${fileExt}`;
+
+            const { error: uploadErr } = await supabase.storage
+              .from('property-images')
+              .upload(fileName, item.file, { upsert: true });
+
+            if (!uploadErr) {
+              const { data: publicUrlData } = supabase.storage
+                .from('property-images')
+                .getPublicUrl(fileName);
+
+              await supabase.from('property_images').insert({
+                property_id: newProp.id,
+                image_url: publicUrlData.publicUrl,
+                storage_path: fileName,
+                is_primary: item.isPrimary,
+              });
+            } else {
+              console.error('Image upload failed:', uploadErr);
+            }
+          }
         }
 
         toast.success('Property created successfully.');
       }
 
-      setIsModalOpen(false);
+      closeModal();
       loadProperties();
     } catch (err: any) {
       toast.error(err.message || 'Failed to save property.');
@@ -252,74 +283,103 @@ export const AdminListingsPage: React.FC = () => {
     }
   };
 
-  // Upload file image to Supabase Storage bucket 'property-images'
+  // Handle files selected during Create mode (stored locally for preview)
+  const handlePendingFilesSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selected = e.target.files;
+    if (!selected || selected.length === 0) return;
+
+    const newItems: Array<{ file: File; previewUrl: string; isPrimary: boolean }> = [];
+    const hadPrimary = pendingFiles.some((p) => p.isPrimary);
+
+    Array.from(selected).forEach((file, index) => {
+      newItems.push({
+        file,
+        previewUrl: URL.createObjectURL(file),
+        isPrimary: !hadPrimary && index === 0,
+      });
+    });
+
+    setPendingFiles((prev) => [...prev, ...newItems]);
+    e.target.value = '';
+  };
+
+  const removePendingFile = (index: number) => {
+    setPendingFiles((prev) => {
+      const removed = prev[index];
+      if (removed) URL.revokeObjectURL(removed.previewUrl);
+      const remaining = prev.filter((_, i) => i !== index);
+      if (removed?.isPrimary && remaining.length > 0) {
+        remaining[0].isPrimary = true;
+      }
+      return remaining;
+    });
+  };
+
+  const setPendingFilePrimary = (index: number) => {
+    setPendingFiles((prev) =>
+      prev.map((item, i) => ({
+        ...item,
+        isPrimary: i === index,
+      }))
+    );
+  };
+
+  // Upload file image(s) to Supabase Storage bucket 'property-images' (Edit mode)
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !editingProperty) return;
+    const files = e.target.files;
+    if (!files || files.length === 0 || !editingProperty) return;
 
     setUploadingImage(true);
     try {
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${editingProperty.id}/${Date.now()}.${fileExt}`;
+      const uploadedRecords: Array<{
+        id: string;
+        image_url: string;
+        is_primary: boolean;
+        storage_path?: string | null;
+      }> = [];
 
-      const { error: uploadError } = await supabase.storage
-        .from('property-images')
-        .upload(fileName, file, { upsert: true });
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const fileExt = file.name.split('.').pop() || 'jpg';
+        const fileName = `${editingProperty.id}/${Date.now()}-${i}.${fileExt}`;
 
-      if (uploadError) throw uploadError;
+        const { error: uploadError } = await supabase.storage
+          .from('property-images')
+          .upload(fileName, file, { upsert: true });
 
-      const { data: publicUrlData } = supabase.storage
-        .from('property-images')
-        .getPublicUrl(fileName);
+        if (uploadError) throw uploadError;
 
-      const publicUrl = publicUrlData.publicUrl;
-      const isFirst = images.length === 0;
+        const { data: publicUrlData } = supabase.storage
+          .from('property-images')
+          .getPublicUrl(fileName);
 
-      const { data: imgRecord, error: dbError } = await supabase
-        .from('property_images')
-        .insert({
-          property_id: editingProperty.id,
-          image_url: publicUrl,
-          storage_path: fileName,
-          is_primary: isFirst,
-        })
-        .select()
-        .single();
+        const publicUrl = publicUrlData.publicUrl;
+        const isFirst: boolean = images.length === 0 && uploadedRecords.length === 0;
 
-      if (dbError) throw dbError;
+        const { data: imgRecord, error: dbError } = await supabase
+          .from('property_images')
+          .insert({
+            property_id: editingProperty.id,
+            image_url: publicUrl,
+            storage_path: fileName,
+            is_primary: isFirst,
+          })
+          .select('id, image_url, is_primary, storage_path')
+          .single();
 
-      setImages((prev) => [...prev, imgRecord]);
-      toast.success('Image uploaded.');
+        if (dbError) throw dbError;
+        if (imgRecord) uploadedRecords.push(imgRecord);
+      }
+
+      setImages((prev) => [...prev, ...uploadedRecords]);
+      toast.success(
+        `${files.length > 1 ? `${files.length} images` : 'Image'} uploaded successfully.`
+      );
     } catch (err: any) {
-      toast.error(err.message || 'Failed to upload image.');
+      toast.error(err.message || 'Failed to upload image(s).');
     } finally {
       setUploadingImage(false);
       e.target.value = '';
-    }
-  };
-
-  // Add image by URL
-  const handleAddImageUrl = async () => {
-    if (!newImageUrl.trim() || !editingProperty) return;
-    try {
-      const isFirst = images.length === 0;
-      const { data: imgRecord, error } = await supabase
-        .from('property_images')
-        .insert({
-          property_id: editingProperty.id,
-          image_url: newImageUrl.trim(),
-          is_primary: isFirst,
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      setImages((prev) => [...prev, imgRecord]);
-      setNewImageUrl('');
-      toast.success('Image added.');
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to add image.');
     }
   };
 
@@ -554,204 +614,201 @@ export const AdminListingsPage: React.FC = () => {
 
       {/* Create / Edit Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm overflow-y-auto">
-          <Card className="w-full max-w-2xl bg-brand-surface border-brand-border p-6 relative shadow-xl my-8">
-            <button
-              onClick={() => setIsModalOpen(false)}
-              className="absolute top-4 right-4 p-1 text-brand-muted hover:text-brand-ink"
-            >
-              <X className="w-5 h-5" />
-            </button>
-
-            <h2 className="text-xl font-serif font-bold text-brand-primary mb-4">
-              {editingProperty ? 'Edit Property' : 'Add New Property'}
-            </h2>
-
-            <form onSubmit={handleSaveProperty} className="space-y-4">
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-brand-ink">Property Title *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Modern 4-Bedroom Townhouse"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  className="w-full h-10 px-3 rounded-md border border-brand-border bg-white text-sm text-brand-ink"
-                />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="w-full max-w-2xl bg-brand-surface border border-brand-border rounded-xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden">
+            {/* Modal Header */}
+            <div className="px-6 py-4 border-b border-brand-border flex items-center justify-between flex-shrink-0 bg-brand-surface">
+              <div>
+                <h2 className="text-lg font-serif font-bold text-brand-primary">
+                  {editingProperty ? 'Edit Property' : 'Add New Property'}
+                </h2>
+                <p className="text-xs text-brand-muted">
+                  {editingProperty
+                    ? 'Update property specifications, status, and photos.'
+                    : 'Fill in details and upload photos directly from your files.'}
+                </p>
               </div>
+              <button
+                type="button"
+                onClick={closeModal}
+                className="p-1.5 rounded-lg text-brand-muted hover:text-brand-ink hover:bg-brand-background transition-colors"
+                aria-label="Close"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* Modal Scrollable Body */}
+            <form onSubmit={handleSaveProperty} className="flex flex-col flex-1 overflow-hidden">
+              <div className="px-6 py-5 overflow-y-auto flex-1 space-y-4">
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-brand-ink">Listing Type *</label>
-                  <select
-                    value={listingType}
-                    onChange={(e) => setListingType(e.target.value)}
-                    className="w-full h-10 px-3 rounded-md border border-brand-border bg-white text-sm text-brand-ink"
-                  >
-                    <option value="sale">For Sale</option>
-                    <option value="rent">To Rent</option>
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-brand-ink">Category *</label>
-                  <select
-                    value={category}
-                    onChange={(e) => setCategory(e.target.value)}
-                    className="w-full h-10 px-3 rounded-md border border-brand-border bg-white text-sm text-brand-ink"
-                  >
-                    <option value="residential">Residential</option>
-                    <option value="commercial">Commercial</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-brand-ink">Price in KES *</label>
-                  <input
-                    type="number"
-                    required
-                    min="1"
-                    placeholder="e.g. 45000000"
-                    value={price}
-                    onChange={(e) => setPrice(e.target.value === '' ? '' : Number(e.target.value))}
-                    className="w-full h-10 px-3 rounded-md border border-brand-border bg-white text-sm text-brand-ink"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-brand-ink">Physical Location *</label>
+                  <label className="text-xs font-semibold text-brand-ink">Property Title *</label>
                   <input
                     type="text"
                     required
-                    placeholder="e.g. Lavington, Nairobi"
-                    value={location}
-                    onChange={(e) => setLocation(e.target.value)}
-                    className="w-full h-10 px-3 rounded-md border border-brand-border bg-white text-sm text-brand-ink"
-                  />
-                </div>
-              </div>
-
-              {/* Bedrooms, Bathrooms, Floor Area */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-brand-ink">Bedrooms (Rooms)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    placeholder="e.g. 4"
-                    value={bedrooms}
-                    onChange={(e) => setBedrooms(e.target.value === '' ? '' : Number(e.target.value))}
+                    placeholder="e.g. Modern 4-Bedroom Townhouse"
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
                     className="w-full h-10 px-3 rounded-md border border-brand-border bg-white text-sm text-brand-ink"
                   />
                 </div>
 
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-brand-ink">Bathrooms</label>
-                  <input
-                    type="number"
-                    min="0"
-                    placeholder="e.g. 3"
-                    value={bathrooms}
-                    onChange={(e) => setBathrooms(e.target.value === '' ? '' : Number(e.target.value))}
-                    className="w-full h-10 px-3 rounded-md border border-brand-border bg-white text-sm text-brand-ink"
-                  />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-brand-ink">Listing Type *</label>
+                    <select
+                      value={listingType}
+                      onChange={(e) => setListingType(e.target.value)}
+                      className="w-full h-10 px-3 rounded-md border border-brand-border bg-white text-sm text-brand-ink"
+                    >
+                      <option value="sale">For Sale</option>
+                      <option value="rent">To Rent</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-brand-ink">Category *</label>
+                    <select
+                      value={category}
+                      onChange={(e) => setCategory(e.target.value)}
+                      className="w-full h-10 px-3 rounded-md border border-brand-border bg-white text-sm text-brand-ink"
+                    >
+                      <option value="residential">Residential</option>
+                      <option value="commercial">Commercial</option>
+                    </select>
+                  </div>
                 </div>
 
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-brand-ink">Floor Area (Sq Ft)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="any"
-                    placeholder="e.g. 3200"
-                    value={sizeSqft}
-                    onChange={(e) => setSizeSqft(e.target.value === '' ? '' : Number(e.target.value))}
-                    className="w-full h-10 px-3 rounded-md border border-brand-border bg-white text-sm text-brand-ink"
-                  />
-                </div>
-              </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-brand-ink">Price in KES *</label>
+                    <input
+                      type="number"
+                      required
+                      min="1"
+                      placeholder="e.g. 45000000"
+                      value={price}
+                      onChange={(e) => setPrice(e.target.value === '' ? '' : Number(e.target.value))}
+                      className="w-full h-10 px-3 rounded-md border border-brand-border bg-white text-sm text-brand-ink"
+                    />
+                  </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-brand-ink">Status *</label>
-                  <select
-                    value={status}
-                    onChange={(e) => setStatus(e.target.value)}
-                    className="w-full h-10 px-3 rounded-md border border-brand-border bg-white text-sm text-brand-ink"
-                  >
-                    <option value="available">Available</option>
-                    <option value="reserved">Reserved</option>
-                    <option value="sold">Sold</option>
-                    <option value="rented">Rented</option>
-                  </select>
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-brand-ink">Physical Location *</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Lavington, Nairobi"
+                      value={location}
+                      onChange={(e) => setLocation(e.target.value)}
+                      className="w-full h-10 px-3 rounded-md border border-brand-border bg-white text-sm text-brand-ink"
+                    />
+                  </div>
                 </div>
 
-                <div className="flex items-center pt-6 gap-2">
-                  <input
-                    type="checkbox"
-                    id="featured-toggle"
-                    checked={isFeatured}
-                    onChange={(e) => setIsFeatured(e.target.checked)}
-                    className="w-4 h-4 text-brand-primary rounded border-brand-border"
-                  />
-                  <label htmlFor="featured-toggle" className="text-xs font-semibold text-brand-ink cursor-pointer">
-                    Feature on Homepage
-                  </label>
+                {/* Bedrooms, Bathrooms, Floor Area */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-brand-ink">Bedrooms (Rooms)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      placeholder="e.g. 4"
+                      value={bedrooms}
+                      onChange={(e) => setBedrooms(e.target.value === '' ? '' : Number(e.target.value))}
+                      className="w-full h-10 px-3 rounded-md border border-brand-border bg-white text-sm text-brand-ink"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-brand-ink">Bathrooms</label>
+                    <input
+                      type="number"
+                      min="0"
+                      placeholder="e.g. 3"
+                      value={bathrooms}
+                      onChange={(e) => setBathrooms(e.target.value === '' ? '' : Number(e.target.value))}
+                      className="w-full h-10 px-3 rounded-md border border-brand-border bg-white text-sm text-brand-ink"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-brand-ink">Floor Area (Sq Ft)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="any"
+                      placeholder="e.g. 3200"
+                      value={sizeSqft}
+                      onChange={(e) => setSizeSqft(e.target.value === '' ? '' : Number(e.target.value))}
+                      className="w-full h-10 px-3 rounded-md border border-brand-border bg-white text-sm text-brand-ink"
+                    />
+                  </div>
                 </div>
-              </div>
 
-              {/* Description (text column that displays under image gallery) */}
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-brand-ink">
-                  Description (shown under the gallery)
-                </label>
-                <textarea
-                  rows={4}
-                  placeholder="Enter detailed property description..."
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  className="w-full p-2.5 rounded-md border border-brand-border bg-white text-xs text-brand-ink"
-                />
-              </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-brand-ink">Status *</label>
+                    <select
+                      value={status}
+                      onChange={(e) => setStatus(e.target.value)}
+                      className="w-full h-10 px-3 rounded-md border border-brand-border bg-white text-sm text-brand-ink"
+                    >
+                      <option value="available">Available</option>
+                      <option value="reserved">Reserved</option>
+                      <option value="sold">Sold</option>
+                      <option value="rented">Rented</option>
+                    </select>
+                  </div>
 
-              {/* Primary Image URL for new properties */}
-              {!editingProperty && (
+                  <div className="flex items-center pt-6 gap-2">
+                    <input
+                      type="checkbox"
+                      id="featured-toggle"
+                      checked={isFeatured}
+                      onChange={(e) => setIsFeatured(e.target.checked)}
+                      className="w-4 h-4 text-brand-primary rounded border-brand-border cursor-pointer"
+                    />
+                    <label htmlFor="featured-toggle" className="text-xs font-semibold text-brand-ink cursor-pointer">
+                      Feature on Homepage
+                    </label>
+                  </div>
+                </div>
+
+                {/* Description (text column that displays under image gallery) */}
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-brand-ink">
-                    Primary Image URL (optional)
+                    Description (shown under the gallery)
                   </label>
-                  <input
-                    type="url"
-                    placeholder="https://images.unsplash.com/..."
-                    value={newImageUrl}
-                    onChange={(e) => setNewImageUrl(e.target.value)}
-                    className="w-full h-10 px-3 rounded-md border border-brand-border bg-white text-sm text-brand-ink"
+                  <textarea
+                    rows={4}
+                    placeholder="Enter detailed property description..."
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    className="w-full p-2.5 rounded-md border border-brand-border bg-white text-xs text-brand-ink"
                   />
-                  <p className="text-[11px] text-brand-muted">
-                    Direct file uploads and multiple gallery images can also be managed anytime via the Edit button.
-                  </p>
                 </div>
-              )}
 
-              {/* Image Management Section (when editing) */}
-              {editingProperty && (
+                {/* Direct File Upload Photo Section */}
                 <div className="pt-4 border-t border-brand-border space-y-3">
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-brand-muted flex items-center gap-1.5">
-                    <ImageIcon className="w-3.5 h-3.5 text-brand-accent" />
-                    <span>Property Images ({images.length})</span>
-                  </h3>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-brand-primary flex items-center gap-1.5">
+                        <ImageIcon className="w-3.5 h-3.5 text-brand-accent" />
+                        <span>Property Photos</span>
+                      </h3>
+                      <p className="text-[11px] text-brand-muted">
+                        Upload images directly from your files.
+                      </p>
+                    </div>
 
-                  {/* Upload Controls */}
-                  <div className="flex flex-col sm:flex-row gap-2">
                     <label className="cursor-pointer">
                       <Button
                         type="button"
                         variant="outline"
                         size="sm"
                         disabled={uploadingImage}
-                        className="border-brand-border text-xs h-9"
+                        className="border-brand-border text-xs h-8 px-3 hover:bg-brand-background cursor-pointer"
                         asChild
                       >
                         <span>
@@ -760,40 +817,22 @@ export const AdminListingsPage: React.FC = () => {
                           ) : (
                             <Upload className="w-3.5 h-3.5 mr-1.5" />
                           )}
-                          <span>Upload File</span>
+                          <span>Upload Photos</span>
                         </span>
                       </Button>
                       <input
                         type="file"
+                        multiple
                         accept="image/*"
-                        onChange={handleFileUpload}
+                        onChange={editingProperty ? handleFileUpload : handlePendingFilesSelect}
                         className="hidden"
                       />
                     </label>
-
-                    <div className="flex-1 flex gap-2">
-                      <input
-                        type="url"
-                        placeholder="Or paste image URL..."
-                        value={newImageUrl}
-                        onChange={(e) => setNewImageUrl(e.target.value)}
-                        className="flex-1 h-9 px-3 rounded-md border border-brand-border bg-white text-xs text-brand-ink"
-                      />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={handleAddImageUrl}
-                        className="border-brand-border text-xs h-9"
-                      >
-                        Add URL
-                      </Button>
-                    </div>
                   </div>
 
-                  {/* Thumbnail List */}
-                  {images.length > 0 && (
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
+                  {/* Edit mode: Display uploaded images */}
+                  {editingProperty && images.length > 0 && (
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-1">
                       {images.map((img) => (
                         <div
                           key={img.id}
@@ -821,33 +860,82 @@ export const AdminListingsPage: React.FC = () => {
                             <button
                               type="button"
                               onClick={() => handleDeleteImage(img.id)}
-                              className="text-rose-600 hover:text-rose-700"
+                              className="text-rose-600 hover:text-rose-700 p-0.5"
+                              title="Delete photo"
                             >
-                              <Trash2 className="w-3 h-3" />
+                              <Trash2 className="w-3.5 h-3.5" />
                             </button>
                           </div>
                         </div>
                       ))}
                     </div>
                   )}
-                </div>
-              )}
 
-              {/* Action Buttons */}
-              <div className="pt-4 flex justify-end gap-2 border-t border-brand-border">
+                  {/* Create mode: Display pending files preview */}
+                  {!editingProperty && pendingFiles.length > 0 && (
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-1">
+                      {pendingFiles.map((item, idx) => (
+                        <div
+                          key={idx}
+                          className={`relative rounded-lg overflow-hidden border p-1 bg-white ${
+                            item.isPrimary ? 'border-brand-primary ring-1 ring-brand-primary' : 'border-brand-border'
+                          }`}
+                        >
+                          <img
+                            src={item.previewUrl}
+                            alt="preview"
+                            className="w-full h-20 object-cover rounded"
+                          />
+                          <div className="mt-1 flex items-center justify-between text-[10px]">
+                            {item.isPrimary ? (
+                              <span className="font-semibold text-brand-primary">Primary</span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => setPendingFilePrimary(idx)}
+                                className="text-brand-muted hover:text-brand-ink underline"
+                              >
+                                Set Primary
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => removePendingFile(idx)}
+                              className="text-rose-600 hover:text-rose-700 p-0.5"
+                              title="Remove photo"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Empty state hint */}
+                  {((editingProperty && images.length === 0) || (!editingProperty && pendingFiles.length === 0)) && (
+                    <div className="py-4 border border-dashed border-brand-border rounded-lg text-center text-xs text-brand-muted">
+                      No photos added yet. Click &ldquo;Upload Photos&rdquo; to select image files from your computer.
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Modal Footer (Sticky at bottom) */}
+              <div className="px-6 py-3.5 border-t border-brand-border flex justify-end gap-2 flex-shrink-0 bg-brand-surface">
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => setIsModalOpen(false)}
+                  onClick={closeModal}
                   disabled={saving}
-                  className="border-brand-border text-xs h-9"
+                  className="border-brand-border text-xs h-9 px-4"
                 >
                   Cancel
                 </Button>
                 <Button
                   type="submit"
                   disabled={saving}
-                  className="bg-brand-primary hover:bg-brand-primary-light text-white text-xs h-9 px-5"
+                  className="bg-brand-primary hover:bg-brand-primary-light text-white text-xs h-9 px-5 font-semibold"
                 >
                   {saving ? (
                     <span className="flex items-center gap-1.5">
@@ -855,12 +943,12 @@ export const AdminListingsPage: React.FC = () => {
                       <span>Saving...</span>
                     </span>
                   ) : (
-                    'Save Property'
+                    editingProperty ? 'Update Property' : 'Save Property'
                   )}
                 </Button>
               </div>
             </form>
-          </Card>
+          </div>
         </div>
       )}
     </div>
