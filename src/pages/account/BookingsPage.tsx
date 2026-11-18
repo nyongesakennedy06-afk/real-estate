@@ -29,6 +29,7 @@ export const BookingsPage: React.FC = () => {
   const [bookings, setBookings] = useState<BookingItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const [filterTab, setFilterTab] = useState<'active' | 'closed' | 'all'>('active');
 
   const loadBookings = async () => {
     if (!user) return;
@@ -71,18 +72,28 @@ export const BookingsPage: React.FC = () => {
     setCancellingId(id);
     try {
       // 1. Try secure RPC function
-      const { error: rpcError } = await supabase.rpc('cancel_my_viewing_booking', {
-        booking_id: id,
-      });
+      const { data: rpcSuccess, error: rpcError } = await supabase.rpc(
+        'cancel_my_viewing_booking',
+        {
+          booking_id: id,
+        }
+      );
 
-      if (rpcError) {
+      if (rpcError || !rpcSuccess) {
         // 2. Fallback to direct update using RLS policy (status 'closed' per PRD)
-        const { error: updateError } = await supabase
+        const { data: updatedRows, error: updateError } = await supabase
           .from('viewing_bookings')
           .update({ status: 'closed' })
-          .eq('id', id);
+          .eq('id', id)
+          .select('id, status');
 
         if (updateError) throw updateError;
+
+        if (!updatedRows || updatedRows.length === 0) {
+          throw new Error(
+            'Unable to cancel booking in the database. Please execute the migration SQL in your Supabase SQL editor.'
+          );
+        }
       }
 
       toast.success('Booking cancelled.');
@@ -112,6 +123,24 @@ export const BookingsPage: React.FC = () => {
     }
   };
 
+  const activeBookingsCount = bookings.filter(
+    (b) => b.status === 'pending' || b.status === 'confirmed' || b.status === 'rescheduled'
+  ).length;
+
+  const closedBookingsCount = bookings.filter(
+    (b) => b.status === 'closed' || b.status === 'cancelled'
+  ).length;
+
+  const filteredBookings = bookings.filter((b) => {
+    if (filterTab === 'active') {
+      return b.status === 'pending' || b.status === 'confirmed' || b.status === 'rescheduled';
+    }
+    if (filterTab === 'closed') {
+      return b.status === 'closed' || b.status === 'cancelled';
+    }
+    return true;
+  });
+
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 py-10 space-y-6">
       <div className="flex items-center justify-between">
@@ -130,22 +159,66 @@ export const BookingsPage: React.FC = () => {
 
       <AccountNav />
 
+      {bookings.length > 0 && (
+        <div className="flex items-center gap-2 border-b border-brand-border pb-3">
+          <button
+            type="button"
+            onClick={() => setFilterTab('active')}
+            className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+              filterTab === 'active'
+                ? 'bg-brand-primary text-white shadow-sm'
+                : 'text-brand-muted hover:text-brand-ink hover:bg-brand-background'
+            }`}
+          >
+            Active ({activeBookingsCount})
+          </button>
+          <button
+            type="button"
+            onClick={() => setFilterTab('closed')}
+            className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+              filterTab === 'closed'
+                ? 'bg-brand-primary text-white shadow-sm'
+                : 'text-brand-muted hover:text-brand-ink hover:bg-brand-background'
+            }`}
+          >
+            Cancelled / Past ({closedBookingsCount})
+          </button>
+          <button
+            type="button"
+            onClick={() => setFilterTab('all')}
+            className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+              filterTab === 'all'
+                ? 'bg-brand-primary text-white shadow-sm'
+                : 'text-brand-muted hover:text-brand-ink hover:bg-brand-background'
+            }`}
+          >
+            All ({bookings.length})
+          </button>
+        </div>
+      )}
+
       {loading ? (
         <div className="space-y-3">
           {[1, 2].map((i) => (
             <div key={i} className="h-20 bg-brand-surface rounded-lg border border-brand-border animate-pulse" />
           ))}
         </div>
-      ) : bookings.length === 0 ? (
+      ) : filteredBookings.length === 0 ? (
         <Card className="p-8 text-center border-brand-border bg-brand-surface space-y-3">
-          <p className="text-sm text-brand-muted">You have no viewing appointments scheduled.</p>
+          <p className="text-sm text-brand-muted">
+            {filterTab === 'active'
+              ? 'You have no active viewing appointments.'
+              : filterTab === 'closed'
+              ? 'No cancelled appointments.'
+              : 'You have no viewing appointments scheduled.'}
+          </p>
           <Button asChild size="sm" className="bg-brand-primary hover:bg-brand-primary-light">
             <Link to="/properties">Explore Listings</Link>
           </Button>
         </Card>
       ) : (
         <div className="space-y-3">
-          {bookings.map((b) => {
+          {filteredBookings.map((b) => {
             const canCancel =
               b.status === 'pending' || b.status === 'confirmed' || b.status === 'rescheduled';
             return (

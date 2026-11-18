@@ -17,6 +17,7 @@ export const ValuationsPage: React.FC = () => {
   const [valuations, setValuations] = useState<ValuationItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const [filterTab, setFilterTab] = useState<'active' | 'cancelled' | 'all'>('active');
 
   const loadValuations = async () => {
     if (!user) return;
@@ -46,18 +47,28 @@ export const ValuationsPage: React.FC = () => {
     setCancellingId(id);
     try {
       // 1. Try secure RPC function
-      const { error: rpcError } = await supabase.rpc('cancel_my_valuation_request', {
-        request_id: id,
-      });
+      const { data: rpcSuccess, error: rpcError } = await supabase.rpc(
+        'cancel_my_valuation_request',
+        {
+          request_id: id,
+        }
+      );
 
-      if (rpcError) {
+      if (rpcError || !rpcSuccess) {
         // 2. Fallback to direct update using RLS policy
-        const { error: updateError } = await supabase
+        const { data: updatedRows, error: updateError } = await supabase
           .from('valuation_requests')
           .update({ status: 'cancelled' })
-          .eq('id', id);
+          .eq('id', id)
+          .select('id, status');
 
         if (updateError) throw updateError;
+
+        if (!updatedRows || updatedRows.length === 0) {
+          throw new Error(
+            'Unable to cancel valuation in the database. Please execute the migration SQL in your Supabase SQL editor.'
+          );
+        }
       }
 
       toast.success('Valuation request cancelled.');
@@ -87,6 +98,33 @@ export const ValuationsPage: React.FC = () => {
     }
   };
 
+  const activeValuationsCount = valuations.filter(
+    (v) =>
+      v.status === 'submitted' ||
+      v.status === 'under_review' ||
+      v.status === 'pending' ||
+      v.status === 'in_review'
+  ).length;
+
+  const cancelledValuationsCount = valuations.filter(
+    (v) => v.status === 'cancelled' || v.status === 'closed'
+  ).length;
+
+  const filteredValuations = valuations.filter((v) => {
+    if (filterTab === 'active') {
+      return (
+        v.status === 'submitted' ||
+        v.status === 'under_review' ||
+        v.status === 'pending' ||
+        v.status === 'in_review'
+      );
+    }
+    if (filterTab === 'cancelled') {
+      return v.status === 'cancelled' || v.status === 'closed';
+    }
+    return true;
+  });
+
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 py-10 space-y-6">
       <div className="flex items-center justify-between">
@@ -108,22 +146,66 @@ export const ValuationsPage: React.FC = () => {
 
       <AccountNav />
 
+      {valuations.length > 0 && (
+        <div className="flex items-center gap-2 border-b border-brand-border pb-3">
+          <button
+            type="button"
+            onClick={() => setFilterTab('active')}
+            className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+              filterTab === 'active'
+                ? 'bg-brand-primary text-white shadow-sm'
+                : 'text-brand-muted hover:text-brand-ink hover:bg-brand-background'
+            }`}
+          >
+            Active ({activeValuationsCount})
+          </button>
+          <button
+            type="button"
+            onClick={() => setFilterTab('cancelled')}
+            className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+              filterTab === 'cancelled'
+                ? 'bg-brand-primary text-white shadow-sm'
+                : 'text-brand-muted hover:text-brand-ink hover:bg-brand-background'
+            }`}
+          >
+            Cancelled ({cancelledValuationsCount})
+          </button>
+          <button
+            type="button"
+            onClick={() => setFilterTab('all')}
+            className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+              filterTab === 'all'
+                ? 'bg-brand-primary text-white shadow-sm'
+                : 'text-brand-muted hover:text-brand-ink hover:bg-brand-background'
+            }`}
+          >
+            All ({valuations.length})
+          </button>
+        </div>
+      )}
+
       {loading ? (
         <div className="space-y-3">
           {[1, 2].map((i) => (
             <div key={i} className="h-20 bg-brand-surface rounded-lg border border-brand-border animate-pulse" />
           ))}
         </div>
-      ) : valuations.length === 0 ? (
+      ) : filteredValuations.length === 0 ? (
         <Card className="p-8 text-center border-brand-border bg-brand-surface space-y-3">
-          <p className="text-sm text-brand-muted">You have no valuation requests.</p>
+          <p className="text-sm text-brand-muted">
+            {filterTab === 'active'
+              ? 'You have no active valuation requests.'
+              : filterTab === 'cancelled'
+              ? 'No cancelled valuation requests.'
+              : 'You have no valuation requests.'}
+          </p>
           <Button asChild size="sm" className="bg-brand-primary hover:bg-brand-primary-light">
             <Link to="/valuation/new">Request a Valuation</Link>
           </Button>
         </Card>
       ) : (
         <div className="space-y-3">
-          {valuations.map((v) => {
+          {filteredValuations.map((v) => {
             const canCancel = v.status === 'submitted' || v.status === 'pending';
             return (
               <Card
