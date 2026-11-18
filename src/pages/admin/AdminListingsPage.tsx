@@ -48,6 +48,9 @@ export const AdminListingsPage: React.FC = () => {
   const [listingType, setListingType] = useState('sale');
   const [category, setCategory] = useState('residential');
   const [location, setLocation] = useState('');
+  const [bedrooms, setBedrooms] = useState<number | ''>('');
+  const [bathrooms, setBathrooms] = useState<number | ''>('');
+  const [sizeSqft, setSizeSqft] = useState<number | ''>('');
   const [status, setStatus] = useState('available');
   const [isFeatured, setIsFeatured] = useState(false);
 
@@ -88,9 +91,13 @@ export const AdminListingsPage: React.FC = () => {
     setListingType('sale');
     setCategory('residential');
     setLocation('');
+    setBedrooms('');
+    setBathrooms('');
+    setSizeSqft('');
     setStatus('available');
     setIsFeatured(false);
     setImages([]);
+    setNewImageUrl('');
     setIsModalOpen(true);
   };
 
@@ -102,9 +109,13 @@ export const AdminListingsPage: React.FC = () => {
     setListingType(prop.listing_type);
     setCategory(prop.category);
     setLocation(prop.location);
+    setBedrooms(prop.bedrooms ?? '');
+    setBathrooms(prop.bathrooms ?? '');
+    setSizeSqft(prop.size_sqft ?? '');
     setStatus(prop.status);
     setIsFeatured(prop.is_featured);
     setImages(prop.property_images || []);
+    setNewImageUrl('');
     setIsModalOpen(true);
   };
 
@@ -128,6 +139,9 @@ export const AdminListingsPage: React.FC = () => {
             listing_type: listingType,
             category: category,
             location: location.trim(),
+            bedrooms: bedrooms === '' ? null : Number(bedrooms),
+            bathrooms: bathrooms === '' ? null : Number(bathrooms),
+            size_sqft: sizeSqft === '' ? null : Number(sizeSqft),
             status: status,
             is_featured: isFeatured,
           })
@@ -137,7 +151,7 @@ export const AdminListingsPage: React.FC = () => {
         toast.success('Property updated successfully.');
       } else {
         // Create new property
-        const { error } = await supabase
+        const { data: newProp, error } = await supabase
           .from('properties')
           .insert({
             created_by: user?.id,
@@ -147,6 +161,9 @@ export const AdminListingsPage: React.FC = () => {
             listing_type: listingType,
             category: category,
             location: location.trim(),
+            bedrooms: bedrooms === '' ? null : Number(bedrooms),
+            bathrooms: bathrooms === '' ? null : Number(bathrooms),
+            size_sqft: sizeSqft === '' ? null : Number(sizeSqft),
             status: status,
             is_featured: isFeatured,
           })
@@ -154,6 +171,16 @@ export const AdminListingsPage: React.FC = () => {
           .single();
 
         if (error) throw error;
+
+        // If a primary image URL was provided during creation
+        if (newImageUrl.trim() && newProp?.id) {
+          await supabase.from('property_images').insert({
+            property_id: newProp.id,
+            image_url: newImageUrl.trim(),
+            is_primary: true,
+          });
+        }
+
         toast.success('Property created successfully.');
       }
 
@@ -404,6 +431,17 @@ export const AdminListingsPage: React.FC = () => {
                               )}
                             </div>
                             <div className="text-xs text-brand-muted">{p.location}</div>
+                            {(p.bedrooms || p.bathrooms || p.size_sqft) && (
+                              <div className="text-[11px] text-brand-muted/80 mt-0.5">
+                                {[
+                                  p.bedrooms ? `${p.bedrooms} beds` : null,
+                                  p.bathrooms ? `${p.bathrooms} baths` : null,
+                                  p.size_sqft ? `${Number(p.size_sqft).toLocaleString()} sq ft` : null,
+                                ]
+                                  .filter(Boolean)
+                                  .join(' · ')}
+                              </div>
+                            )}
                           </div>
                         </td>
 
@@ -540,6 +578,46 @@ export const AdminListingsPage: React.FC = () => {
                 </div>
               </div>
 
+              {/* Bedrooms, Bathrooms, Floor Area */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-brand-ink">Bedrooms (Rooms)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    placeholder="e.g. 4"
+                    value={bedrooms}
+                    onChange={(e) => setBedrooms(e.target.value === '' ? '' : Number(e.target.value))}
+                    className="w-full h-10 px-3 rounded-md border border-brand-border bg-white text-sm text-brand-ink"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-brand-ink">Bathrooms</label>
+                  <input
+                    type="number"
+                    min="0"
+                    placeholder="e.g. 3"
+                    value={bathrooms}
+                    onChange={(e) => setBathrooms(e.target.value === '' ? '' : Number(e.target.value))}
+                    className="w-full h-10 px-3 rounded-md border border-brand-border bg-white text-sm text-brand-ink"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-brand-ink">Floor Area (Sq Ft)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    placeholder="e.g. 3200"
+                    value={sizeSqft}
+                    onChange={(e) => setSizeSqft(e.target.value === '' ? '' : Number(e.target.value))}
+                    className="w-full h-10 px-3 rounded-md border border-brand-border bg-white text-sm text-brand-ink"
+                  />
+                </div>
+              </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-brand-ink">Status *</label>
@@ -582,6 +660,25 @@ export const AdminListingsPage: React.FC = () => {
                   className="w-full p-2.5 rounded-md border border-brand-border bg-white text-xs text-brand-ink"
                 />
               </div>
+
+              {/* Primary Image URL for new properties */}
+              {!editingProperty && (
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-brand-ink">
+                    Primary Image URL (optional)
+                  </label>
+                  <input
+                    type="url"
+                    placeholder="https://images.unsplash.com/..."
+                    value={newImageUrl}
+                    onChange={(e) => setNewImageUrl(e.target.value)}
+                    className="w-full h-10 px-3 rounded-md border border-brand-border bg-white text-sm text-brand-ink"
+                  />
+                  <p className="text-[11px] text-brand-muted">
+                    Direct file uploads and multiple gallery images can also be managed anytime via the Edit button.
+                  </p>
+                </div>
+              )}
 
               {/* Image Management Section (when editing) */}
               {editingProperty && (
