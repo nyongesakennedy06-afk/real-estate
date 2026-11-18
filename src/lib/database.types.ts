@@ -303,6 +303,14 @@ export type Database = {
     }
     Functions: {
       is_admin: { Args: never; Returns: boolean }
+      cancel_my_viewing_booking: {
+        Args: { booking_id: string }
+        Returns: boolean
+      }
+      cancel_my_valuation_request: {
+        Args: { request_id: string }
+        Returns: boolean
+      }
       record_audit: {
         Args: {
           p_action: string

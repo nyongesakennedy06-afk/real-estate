@@ -45,12 +45,21 @@ export const ValuationsPage: React.FC = () => {
     if (!confirm('Cancel this valuation request?')) return;
     setCancellingId(id);
     try {
-      const { error } = await supabase
-        .from('valuation_requests')
-        .update({ status: 'cancelled' })
-        .eq('id', id);
+      // 1. Try secure RPC function
+      const { error: rpcError } = await supabase.rpc('cancel_my_valuation_request', {
+        request_id: id,
+      });
 
-      if (error) throw error;
+      if (rpcError) {
+        // 2. Fallback to direct update using RLS policy
+        const { error: updateError } = await supabase
+          .from('valuation_requests')
+          .update({ status: 'cancelled' })
+          .eq('id', id);
+
+        if (updateError) throw updateError;
+      }
+
       toast.success('Valuation request cancelled.');
       setValuations((prev) =>
         prev.map((v) => (v.id === id ? { ...v, status: 'cancelled' } : v))
@@ -115,7 +124,7 @@ export const ValuationsPage: React.FC = () => {
       ) : (
         <div className="space-y-3">
           {valuations.map((v) => {
-            const canCancel = v.status === 'pending';
+            const canCancel = v.status === 'submitted' || v.status === 'pending';
             return (
               <Card
                 key={v.id}

@@ -70,15 +70,24 @@ export const BookingsPage: React.FC = () => {
     if (!confirm('Cancel this viewing booking?')) return;
     setCancellingId(id);
     try {
-      const { error } = await supabase
-        .from('viewing_bookings')
-        .update({ status: 'cancelled' })
-        .eq('id', id);
+      // 1. Try secure RPC function
+      const { error: rpcError } = await supabase.rpc('cancel_my_viewing_booking', {
+        booking_id: id,
+      });
 
-      if (error) throw error;
+      if (rpcError) {
+        // 2. Fallback to direct update using RLS policy (status 'closed' per PRD)
+        const { error: updateError } = await supabase
+          .from('viewing_bookings')
+          .update({ status: 'closed' })
+          .eq('id', id);
+
+        if (updateError) throw updateError;
+      }
+
       toast.success('Booking cancelled.');
       setBookings((prev) =>
-        prev.map((b) => (b.id === id ? { ...b, status: 'cancelled' } : b))
+        prev.map((b) => (b.id === id ? { ...b, status: 'closed' } : b))
       );
     } catch (err: any) {
       toast.error(err.message || 'Failed to cancel.');
@@ -93,6 +102,9 @@ export const BookingsPage: React.FC = () => {
         return <Badge variant="confirmed">Confirmed</Badge>;
       case 'pending':
         return <Badge variant="pending">Pending</Badge>;
+      case 'rescheduled':
+        return <Badge variant="rescheduled">Rescheduled</Badge>;
+      case 'closed':
       case 'cancelled':
         return <Badge variant="destructive">Cancelled</Badge>;
       default:
@@ -134,7 +146,8 @@ export const BookingsPage: React.FC = () => {
       ) : (
         <div className="space-y-3">
           {bookings.map((b) => {
-            const canCancel = b.status === 'pending' || b.status === 'confirmed';
+            const canCancel =
+              b.status === 'pending' || b.status === 'confirmed' || b.status === 'rescheduled';
             return (
               <Card
                 key={b.id}

@@ -490,6 +490,13 @@ FOR UPDATE USING (
   public.is_admin()
 );
 
+CREATE POLICY "viewing_bookings_user_cancel" ON public.viewing_bookings
+FOR UPDATE USING (
+  auth.uid() = user_id AND status IN ('pending', 'confirmed', 'rescheduled')
+) WITH CHECK (
+  auth.uid() = user_id AND status = 'closed'
+);
+
 CREATE POLICY "viewing_bookings_admin_delete" ON public.viewing_bookings
 FOR DELETE USING (
   public.is_admin()
@@ -513,6 +520,13 @@ FOR UPDATE USING (
   public.is_admin()
 ) WITH CHECK (
   public.is_admin()
+);
+
+CREATE POLICY "valuation_requests_user_cancel" ON public.valuation_requests
+FOR UPDATE USING (
+  auth.uid() = user_id AND status = 'submitted'
+) WITH CHECK (
+  auth.uid() = user_id AND status = 'cancelled'
 );
 
 CREATE POLICY "valuation_requests_admin_delete" ON public.valuation_requests
