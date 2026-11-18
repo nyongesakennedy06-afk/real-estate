@@ -75,7 +75,7 @@ export const AdminOverviewPage: React.FC = () => {
           supabase
             .from('valuation_requests')
             .select('*', { count: 'exact', head: true })
-            .eq('status', 'pending'),
+            .in('status', ['submitted', 'pending']),
           supabase.from('profiles').select('*', { count: 'exact', head: true }),
         ]);
 
@@ -283,12 +283,12 @@ export const AdminOverviewPage: React.FC = () => {
                     variant={
                       v.status === 'completed'
                         ? 'confirmed'
-                        : v.status === 'in_review'
+                        : v.status === 'under_review' || v.status === 'in_review'
                         ? 'rescheduled'
                         : 'pending'
                     }
                   >
-                    {v.status}
+                    <span className="capitalize">{v.status.replace('_', ' ')}</span>
                   </Badge>
                 </div>
               ))

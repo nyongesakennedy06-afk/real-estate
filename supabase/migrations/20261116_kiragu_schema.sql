@@ -91,7 +91,7 @@ CREATE TABLE IF NOT EXISTS public.valuation_requests (
   approximate_size text,
   purpose text NOT NULL CHECK (purpose IN ('sale', 'purchase', 'mortgage', 'insurance', 'rental', 'other')),
   additional_details text,
-  status text NOT NULL DEFAULT 'submitted' CHECK (status IN ('submitted', 'under_review', 'completed')),
+  status text NOT NULL DEFAULT 'submitted' CHECK (status IN ('submitted', 'under_review', 'completed', 'cancelled')),
   handled_by uuid REFERENCES public.profiles(id) ON DELETE SET NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()

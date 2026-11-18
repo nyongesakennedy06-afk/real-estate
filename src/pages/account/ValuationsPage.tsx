@@ -64,16 +64,17 @@ export const ValuationsPage: React.FC = () => {
 
   const getStatusBadge = (status: string) => {
     switch (status) {
-      case 'pending':
-        return <Badge variant="pending">Pending</Badge>;
+      case 'under_review':
       case 'in_review':
-        return <Badge variant="rescheduled">In Review</Badge>;
+        return <Badge variant="rescheduled">Under Review</Badge>;
       case 'completed':
         return <Badge variant="confirmed">Completed</Badge>;
       case 'cancelled':
         return <Badge variant="destructive">Cancelled</Badge>;
+      case 'submitted':
+      case 'pending':
       default:
-        return <Badge variant="outline">{status}</Badge>;
+        return <Badge variant="pending">Submitted</Badge>;
     }
   };
 

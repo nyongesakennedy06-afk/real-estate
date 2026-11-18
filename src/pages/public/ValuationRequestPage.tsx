@@ -44,7 +44,7 @@ export const ValuationRequestPage: React.FC = () => {
         approximate_size: size.trim() || null,
         purpose: purpose,
         additional_details: details.trim() || null,
-        status: 'pending',
+        status: 'submitted',
       });
 
       if (insertError) throw insertError;

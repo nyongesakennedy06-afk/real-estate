@@ -158,8 +158,8 @@ export const AdminValuationsPage: React.FC = () => {
           handled_by: newHandledBy,
           // If unreviewed, automatically advance to 'in_review' when assigned
           status:
-            assigningValuation.status === 'pending' && newHandledBy
-              ? 'in_review'
+            (assigningValuation.status === 'submitted' || assigningValuation.status === 'pending') && newHandledBy
+              ? 'under_review'
               : assigningValuation.status,
         })
         .eq('id', targetValId);
@@ -183,22 +183,28 @@ export const AdminValuationsPage: React.FC = () => {
     const q = search.toLowerCase();
 
     const matchesSearch = clientName.includes(q) || location.includes(q) || lr.includes(q);
-    const matchesStatus = statusFilter === 'all' || v.status === statusFilter;
+    const matchesStatus =
+      statusFilter === 'all' ||
+      (statusFilter === 'submitted' && (v.status === 'submitted' || v.status === 'pending')) ||
+      (statusFilter === 'under_review' && (v.status === 'under_review' || v.status === 'in_review')) ||
+      v.status === statusFilter;
 
     return matchesSearch && matchesStatus;
   });
 
   const getStatusBadge = (status: string) => {
     switch (status) {
+      case 'under_review':
       case 'in_review':
-        return <Badge variant="rescheduled">In Review</Badge>;
+        return <Badge variant="rescheduled">Under Review</Badge>;
       case 'completed':
         return <Badge variant="confirmed">Completed</Badge>;
       case 'cancelled':
         return <Badge variant="destructive">Cancelled</Badge>;
+      case 'submitted':
       case 'pending':
       default:
-        return <Badge variant="pending">Pending</Badge>;
+        return <Badge variant="pending">Submitted</Badge>;
     }
   };
 
@@ -233,10 +239,9 @@ export const AdminValuationsPage: React.FC = () => {
               className="h-10 px-3 rounded-md border border-brand-border bg-white text-xs text-brand-ink"
             >
               <option value="all">All Statuses</option>
-              <option value="pending">Pending</option>
-              <option value="in_review">In Review</option>
+              <option value="submitted">Submitted</option>
+              <option value="under_review">Under Review</option>
               <option value="completed">Completed</option>
-              <option value="cancelled">Cancelled</option>
             </select>
             <Badge variant="outline" className="text-xs">
               Total: {filteredValuations.length}
@@ -337,14 +342,19 @@ export const AdminValuationsPage: React.FC = () => {
 
                       <td className="py-3 px-4 text-right space-x-1 whitespace-nowrap">
                         <select
-                          value={v.status}
+                          value={
+                            v.status === 'pending'
+                              ? 'submitted'
+                              : v.status === 'in_review'
+                              ? 'under_review'
+                              : v.status
+                          }
                           onChange={(e) => handleUpdateStatus(v.id, e.target.value)}
                           className="h-8 px-2 text-xs border border-brand-border rounded bg-white text-brand-ink focus:outline-none"
                         >
-                          <option value="pending">Pending</option>
-                          <option value="in_review">In Review</option>
+                          <option value="submitted">Submitted</option>
+                          <option value="under_review">Under Review</option>
                           <option value="completed">Completed</option>
-                          <option value="cancelled">Cancelled</option>
                         </select>
                       </td>
                     </tr>
