@@ -554,6 +554,50 @@ FOR DELETE USING (
   bucket_id = 'property-images' AND public.is_admin()
 );
 
+-- 5.1 Storage Cascade Cleanup Triggers
+-- Automatically delete files from storage.objects when property_images or properties are deleted
+CREATE OR REPLACE FUNCTION public.delete_storage_object_on_property_image_delete()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, storage
+AS $$
+BEGIN
+  IF OLD.storage_path IS NOT NULL AND OLD.storage_path <> '' THEN
+    DELETE FROM storage.objects
+    WHERE bucket_id = 'property-images' AND name = OLD.storage_path;
+  END IF;
+  RETURN OLD;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_delete_property_image_storage ON public.property_images;
+CREATE TRIGGER trg_delete_property_image_storage
+AFTER DELETE ON public.property_images
+FOR EACH ROW
+EXECUTE FUNCTION public.delete_storage_object_on_property_image_delete();
+
+CREATE OR REPLACE FUNCTION public.delete_property_storage_folder_on_property_delete()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, storage
+AS $$
+BEGIN
+  DELETE FROM storage.objects
+  WHERE bucket_id = 'property-images'
+    AND (name LIKE (OLD.id::text || '/%'));
+  RETURN OLD;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_delete_property_storage_folder ON public.properties;
+CREATE TRIGGER trg_delete_property_storage_folder
+AFTER DELETE ON public.properties
+FOR EACH ROW
+EXECUTE FUNCTION public.delete_property_storage_folder_on_property_delete();
+
+
 
 -- 6. DEMO SEED DATA
 DO $$

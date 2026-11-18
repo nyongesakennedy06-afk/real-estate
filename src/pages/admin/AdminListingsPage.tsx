@@ -56,7 +56,7 @@ export const AdminListingsPage: React.FC = () => {
 
   // Property Images State (for edit mode)
   const [images, setImages] = useState<
-    Array<{ id: string; image_url: string; is_primary: boolean }>
+    Array<{ id: string; image_url: string; is_primary: boolean; storage_path?: string | null }>
   >([]);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [newImageUrl, setNewImageUrl] = useState('');
@@ -194,12 +194,58 @@ export const AdminListingsPage: React.FC = () => {
   };
 
   const handleDeleteProperty = async (id: string, title: string) => {
-    if (!confirm(`Are you sure you want to delete "${title}"?`)) return;
+    if (
+      !confirm(
+        `Are you sure you want to delete "${title}"? All associated images and storage files will be permanently deleted.`
+      )
+    )
+      return;
 
     try {
+      // 1. Collect all storage paths from property_images for this property
+      const { data: imgRecords } = await supabase
+        .from('property_images')
+        .select('storage_path')
+        .eq('property_id', id);
+
+      const pathsToRemove: string[] = (imgRecords || [])
+        .map((img) => img.storage_path)
+        .filter((path): path is string => Boolean(path));
+
+      // 2. Also check if any files exist in the property's storage folder
+      try {
+        const { data: folderFiles } = await supabase.storage
+          .from('property-images')
+          .list(id);
+
+        if (folderFiles && folderFiles.length > 0) {
+          folderFiles.forEach((file) => {
+            const fullPath = `${id}/${file.name}`;
+            if (!pathsToRemove.includes(fullPath)) {
+              pathsToRemove.push(fullPath);
+            }
+          });
+        }
+      } catch (err) {
+        console.warn('Could not inspect storage folder:', err);
+      }
+
+      // 3. Delete files from Supabase Storage bucket
+      if (pathsToRemove.length > 0) {
+        const { error: storageError } = await supabase.storage
+          .from('property-images')
+          .remove(pathsToRemove);
+
+        if (storageError) {
+          console.warn('Storage cleanup warning:', storageError.message);
+        }
+      }
+
+      // 4. Delete property from DB (ON DELETE CASCADE removes property_images and viewing_bookings rows)
       const { error } = await supabase.from('properties').delete().eq('id', id);
       if (error) throw error;
-      toast.success('Property deleted.');
+
+      toast.success('Property and all associated images deleted.');
       setProperties((prev) => prev.filter((p) => p.id !== id));
     } catch (err: any) {
       toast.error(err.message || 'Failed to delete property.');
@@ -305,6 +351,15 @@ export const AdminListingsPage: React.FC = () => {
 
   const handleDeleteImage = async (imageId: string) => {
     try {
+      const targetImage = images.find((img) => img.id === imageId);
+
+      // If stored in Supabase storage bucket, clean up the file
+      if (targetImage?.storage_path) {
+        await supabase.storage
+          .from('property-images')
+          .remove([targetImage.storage_path]);
+      }
+
       const { error } = await supabase.from('property_images').delete().eq('id', imageId);
       if (error) throw error;
 
